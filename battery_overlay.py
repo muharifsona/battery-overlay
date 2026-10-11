@@ -30,7 +30,7 @@ def get_battery():
 
 
 REFRESH_MS = 5000
-MARGIN = 12
+MARGIN = 0
 
 root = tk.Tk()
 root.overrideredirect(True)          # no title bar
