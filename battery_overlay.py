@@ -35,7 +35,7 @@ MARGIN = 12
 root = tk.Tk()
 root.overrideredirect(True)          # no title bar
 root.attributes("-topmost", True)    # always on top
-root.attributes("-alpha", 0.85)      # slightly transparent
+root.attributes("-alpha", 0.5)       # 0.0 = invisible, 1.0 = opaque
 root.configure(bg="#1e1e1e")
 
 label = tk.Label(root, font=("Segoe UI", 12, "bold"), fg="white", bg="#1e1e1e",
