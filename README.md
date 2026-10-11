@@ -6,6 +6,8 @@ Small always-on-top overlays for Windows, written in Python/tkinter:
   (green > 50%, yellow > 20%, red below; ⚡ while charging)
 - **Top-left:** digital clock
 
+![Overlays on top of a game (Genshin Impact)](screenshots/in-game.jpg)
+
 ![Network speed and battery overlay](screenshots/battery-network.png)
 ![Clock overlay](screenshots/clock.png)
 
