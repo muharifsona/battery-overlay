@@ -1,5 +1,7 @@
-"""Floating overlays for Windows: battery percentage (top-right corner)
-and a digital clock (top-left corner).
+"""Floating overlays for Windows: network speed + battery percentage
+(top-right corner) and a digital clock (top-left corner).
+
+Requires: pip install psutil
 
 Run:  pythonw battery_overlay.py   (no console window)
 The overlays are click-through: mouse clicks pass to the windows behind them.
@@ -8,6 +10,8 @@ Close: end "pythonw.exe" in Task Manager.
 import ctypes
 import time
 import tkinter as tk
+
+import psutil
 
 
 class SYSTEM_POWER_STATUS(ctypes.Structure):
@@ -31,7 +35,15 @@ def get_battery():
     return pct, status.ACLineStatus == 1
 
 
-REFRESH_MS = 5000
+def format_speed(bytes_per_sec):
+    for unit in ("B/s", "KB/s", "MB/s"):
+        if bytes_per_sec < 1024:
+            return f"{bytes_per_sec:.0f} {unit}" if unit == "B/s" else f"{bytes_per_sec:.1f} {unit}"
+        bytes_per_sec /= 1024
+    return f"{bytes_per_sec:.1f} GB/s"
+
+
+REFRESH_MS = 1000
 CLOCK_FORMAT = "%H:%M:%S"
 MARGIN = 0
 ALPHA = 0.5                          # 0.0 = invisible, 1.0 = opaque
@@ -49,8 +61,12 @@ def make_overlay(win):
     return label
 
 
-root = tk.Tk()                       # battery overlay
+root = tk.Tk()                       # network speed + battery overlay
 label = make_overlay(root)
+label.pack(side="right")
+net_label = tk.Label(root, font=("Segoe UI", 12, "bold"), fg="white", bg=BG,
+                     padx=10, pady=4, width=22, anchor="e")  # fixed width: no jitter
+net_label.pack(side="right")
 clock_win = tk.Toplevel(root)        # clock overlay
 clock_label = make_overlay(clock_win)
 
@@ -61,7 +77,19 @@ def place_top_right():
     root.geometry(f"+{x}+{MARGIN}")
 
 
+last_net = (psutil.net_io_counters(), time.monotonic())
+
+
 def refresh():
+    global last_net
+    counters, now = psutil.net_io_counters(), time.monotonic()
+    prev, prev_time = last_net
+    elapsed = max(now - prev_time, 1e-6)
+    down = (counters.bytes_recv - prev.bytes_recv) / elapsed
+    up = (counters.bytes_sent - prev.bytes_sent) / elapsed
+    last_net = (counters, now)
+    net_label.config(text=f"↓ {format_speed(down)}   ↑ {format_speed(up)}")
+
     pct, charging = get_battery()
     if pct is None:
         text, color = "🔋 N/A", "white"
