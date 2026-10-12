@@ -65,7 +65,7 @@ root = tk.Tk()                       # network speed + battery overlay
 label = make_overlay(root)
 label.pack(side="right")
 net_label = tk.Label(root, font=("Segoe UI", 12, "bold"), fg="white", bg=BG,
-                     padx=10, pady=4, width=22, anchor="e")  # fixed width: no jitter
+                     padx=10, pady=4)
 net_label.pack(side="right")
 clock_win = tk.Toplevel(root)        # clock overlay
 clock_label = make_overlay(clock_win)
