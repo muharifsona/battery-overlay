@@ -1,10 +1,12 @@
-"""Floating battery percentage overlay (top-right corner) for Windows.
+"""Floating overlays for Windows: battery percentage (top-right corner)
+and a digital clock (top-left corner).
 
 Run:  pythonw battery_overlay.py   (no console window)
-The overlay is click-through: mouse clicks pass to the windows behind it.
+The overlays are click-through: mouse clicks pass to the windows behind them.
 Close: end "pythonw.exe" in Task Manager.
 """
 import ctypes
+import time
 import tkinter as tk
 
 
@@ -30,17 +32,27 @@ def get_battery():
 
 
 REFRESH_MS = 5000
+CLOCK_FORMAT = "%H:%M:%S"
 MARGIN = 0
+ALPHA = 0.5                          # 0.0 = invisible, 1.0 = opaque
+BG = "#1e1e1e"
 
-root = tk.Tk()
-root.overrideredirect(True)          # no title bar
-root.attributes("-topmost", True)    # always on top
-root.attributes("-alpha", 0.5)       # 0.0 = invisible, 1.0 = opaque
-root.configure(bg="#1e1e1e")
 
-label = tk.Label(root, font=("Segoe UI", 12, "bold"), fg="white", bg="#1e1e1e",
-                 padx=10, pady=4)
-label.pack()
+def make_overlay(win):
+    win.overrideredirect(True)          # no title bar
+    win.attributes("-topmost", True)    # always on top
+    win.attributes("-alpha", ALPHA)
+    win.configure(bg=BG)
+    label = tk.Label(win, font=("Segoe UI", 12, "bold"), fg="white", bg=BG,
+                     padx=10, pady=4)
+    label.pack()
+    return label
+
+
+root = tk.Tk()                       # battery overlay
+label = make_overlay(root)
+clock_win = tk.Toplevel(root)        # clock overlay
+clock_label = make_overlay(clock_win)
 
 
 def place_top_right():
@@ -62,6 +74,12 @@ def refresh():
     root.after(REFRESH_MS, refresh)
 
 
+def tick():
+    clock_label.config(text=time.strftime(CLOCK_FORMAT))
+    # schedule next update right after the next full second
+    root.after(1000 - int(time.time() * 1000) % 1000 + 5, tick)
+
+
 # Click-through: let mouse input pass to windows behind the overlay
 GWL_EXSTYLE = -20
 WS_EX_LAYERED = 0x00080000
@@ -70,14 +88,18 @@ WS_EX_TOOLWINDOW = 0x00000080   # hide from taskbar / Alt+Tab
 WS_EX_NOACTIVATE = 0x08000000   # never steal focus
 
 
-def make_click_through():
+def make_click_through(win):
+    win.update_idletasks()
     user32 = ctypes.windll.user32
-    hwnd = user32.GetParent(root.winfo_id())
+    hwnd = user32.GetParent(win.winfo_id())
     style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
     style |= WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
     user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
 
 
+clock_win.geometry(f"+{MARGIN}+{MARGIN}")
 refresh()
-make_click_through()
+tick()
+make_click_through(root)
+make_click_through(clock_win)
 root.mainloop()
