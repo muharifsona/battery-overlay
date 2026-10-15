@@ -11,7 +11,11 @@ Small always-on-top overlays for Windows, written in Python/tkinter:
 ![Network speed and battery overlay](screenshots/battery-network.png)
 ![Clock overlay](screenshots/clock.png)
 
-The overlays are semi-transparent and **click-through**: mouse clicks go to the
+The overlays stay faint until you need them: they fade to full opacity while
+the mouse is over one, and both show for a few seconds after the cursor (or a
+touch swipe) hits the top edge of the screen.
+
+They are also **click-through**: mouse clicks go to the
 windows behind them, they never take focus, and they don't show up in the
 taskbar or Alt+Tab.
 
@@ -54,7 +58,9 @@ Edit the constants near the top of `battery_overlay.py`:
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `ALPHA` | `0.5` | Opacity, `0.0` invisible to `1.0` opaque |
+| `IDLE_ALPHA` | `0.25` | Normal opacity, `0.0` invisible to `1.0` opaque |
+| `ACTIVE_ALPHA` | `1.0` | Opacity on hover or after a swipe from the top |
+| `REVEAL_MS` | `3000` | How long a swipe from the top keeps the overlays visible |
 | `MARGIN` | `0` | Distance from screen edges in pixels |
 | `CLOCK_FORMAT` | `"%d/%m/%Y   %H:%M:%S"` | Date/time format, e.g. `"%H:%M"` or `"%d %b %Y   %I:%M %p"` |
 | `REFRESH_MS` | `1000` | Battery and network update interval |

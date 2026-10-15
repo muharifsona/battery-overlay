@@ -59,14 +59,17 @@ def format_speed(bytes_per_sec):
 REFRESH_MS = 1000
 CLOCK_FORMAT = "%d/%m/%Y   %H:%M:%S"
 MARGIN = 0
-ALPHA = 0.5                          # 0.0 = invisible, 1.0 = opaque
+IDLE_ALPHA = 0.25                    # 0.0 = invisible, 1.0 = opaque
+ACTIVE_ALPHA = 1.0                   # on mouse hover / swipe from the top edge
+REVEAL_MS = 3000                     # how long a top-edge swipe keeps them visible
+TOP_EDGE_PX = 1                      # cursor/touch this close to the top = swipe
 BG = "#1e1e1e"
 
 
 def make_overlay(win):
     win.overrideredirect(True)          # no title bar
     win.attributes("-topmost", True)    # always on top
-    win.attributes("-alpha", ALPHA)
+    win.attributes("-alpha", IDLE_ALPHA)
     win.configure(bg=BG)
     label = tk.Label(win, font=("Segoe UI", 12, "bold"), fg="white", bg=BG,
                      padx=10, pady=4)
@@ -138,6 +141,43 @@ def make_click_through(win):
     user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
 
 
+# Reveal: fade to full opacity while the cursor is over an overlay, or for a
+# few seconds after the cursor/touch hits the top screen edge (swipe down).
+class POINT(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+alpha = {root: IDLE_ALPHA, clock_win: IDLE_ALPHA}
+reveal_until = 0.0
+LWA_ALPHA = 0x2
+
+
+def set_alpha(win, value):
+    # Set directly: Tk's "-alpha" 1.0 drops WS_EX_LAYERED, which would end click-through.
+    hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
+    ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, int(value * 255), LWA_ALPHA)
+
+
+def watch_cursor():
+    global reveal_until
+    pt = POINT()
+    ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+    now = time.monotonic()
+    if pt.y <= TOP_EDGE_PX:
+        reveal_until = now + REVEAL_MS / 1000
+    for win in alpha:
+        x, y = win.winfo_rootx(), win.winfo_rooty()
+        hover = x <= pt.x < x + win.winfo_width() and y <= pt.y < y + win.winfo_height()
+        target = ACTIVE_ALPHA if hover or now < reveal_until else IDLE_ALPHA
+        current = alpha[win]
+        if current != target:  # smooth fade
+            step = 0.15 if target > current else 0.05
+            current = min(target, current + step) if target > current else max(target, current - step)
+            alpha[win] = current
+            set_alpha(win, current)
+    root.after(30, watch_cursor)
+
+
 def watch_quit():
     if kernel32.WaitForSingleObject(ctypes.c_void_p(quit_event), 0) == 0:  # signaled
         root.destroy()
@@ -147,6 +187,7 @@ def watch_quit():
 
 clock_win.geometry(f"+{MARGIN}+{MARGIN}")
 watch_quit()
+watch_cursor()
 refresh()
 tick()
 make_click_through(root)
