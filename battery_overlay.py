@@ -57,7 +57,7 @@ def format_speed(bytes_per_sec):
 
 
 REFRESH_MS = 1000
-CLOCK_FORMAT = "%H:%M:%S"
+CLOCK_FORMAT = "%d/%m/%Y   %H:%M:%S"
 MARGIN = 0
 ALPHA = 0.5                          # 0.0 = invisible, 1.0 = opaque
 BG = "#1e1e1e"

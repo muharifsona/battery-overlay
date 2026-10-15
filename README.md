@@ -56,5 +56,5 @@ Edit the constants near the top of `battery_overlay.py`:
 |---|---|---|
 | `ALPHA` | `0.5` | Opacity, `0.0` invisible to `1.0` opaque |
 | `MARGIN` | `0` | Distance from screen edges in pixels |
-| `CLOCK_FORMAT` | `"%H:%M:%S"` | Clock format, e.g. `"%H:%M"` or `"%I:%M %p"` |
+| `CLOCK_FORMAT` | `"%d/%m/%Y   %H:%M:%S"` | Date/time format, e.g. `"%H:%M"` or `"%d %b %Y   %I:%M %p"` |
 | `REFRESH_MS` | `1000` | Battery and network update interval |
