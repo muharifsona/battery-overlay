@@ -8,6 +8,8 @@ The overlays are click-through: mouse clicks pass to the windows behind them.
 Running it again while the overlays are shown closes them (toggle).
 """
 import ctypes
+import ctypes.wintypes as wintypes
+import threading
 import time
 import tkinter as tk
 
@@ -62,7 +64,9 @@ MARGIN = 0
 IDLE_ALPHA = 0.25                    # 0.0 = invisible, 1.0 = opaque
 ACTIVE_ALPHA = 1.0                   # on mouse hover / swipe from the top edge
 REVEAL_MS = 3000                     # how long a top-edge swipe keeps them visible
-TOP_EDGE_PX = 1                      # cursor/touch this close to the top = swipe
+TOP_EDGE_PX = 1                      # mouse cursor this close to the top = reveal
+SWIPE_START = 0.03                   # touch must start in the top 3% of the screen...
+SWIPE_DISTANCE = 0.08                # ...and move down at least 8% of the screen height
 BG = "#1e1e1e"
 
 
@@ -178,6 +182,132 @@ def watch_cursor():
     root.after(30, watch_cursor)
 
 
+# Touch swipe from the top edge. Touch input doesn't move the cursor, so read
+# the touchscreen directly via Raw Input (works while other apps have focus).
+user32 = ctypes.windll.user32
+hid = ctypes.windll.hid
+user32.CreateWindowExW.restype = ctypes.c_void_p
+user32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+                                   ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                   ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+user32.GetRawInputData.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p,
+                                   ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+user32.GetRawInputDeviceInfoW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p,
+                                          ctypes.POINTER(ctypes.c_uint)]
+HIDP_OK = 0x00110000
+VALUE_CAPS_SIZE = 72
+
+
+class RAWINPUTDEVICE(ctypes.Structure):
+    _fields_ = [("usUsagePage", ctypes.c_ushort), ("usUsage", ctypes.c_ushort),
+                ("dwFlags", wintypes.DWORD), ("hwndTarget", ctypes.c_void_p)]
+
+
+class DEVMODEW(ctypes.Structure):  # only the fields up to dmDisplayOrientation
+    _fields_ = [("dmDeviceName", ctypes.c_wchar * 32), ("dmSpecVersion", wintypes.WORD),
+                ("dmDriverVersion", wintypes.WORD), ("dmSize", wintypes.WORD),
+                ("dmDriverExtra", wintypes.WORD), ("dmFields", wintypes.DWORD),
+                ("dmPositionX", ctypes.c_long), ("dmPositionY", ctypes.c_long),
+                ("dmDisplayOrientation", wintypes.DWORD), ("dmDisplayFixedOutput", wintypes.DWORD),
+                ("_rest", ctypes.c_byte * 200)]
+
+
+def screen_orientation():
+    dm = DEVMODEW()
+    dm.dmSize = ctypes.sizeof(DEVMODEW)
+    user32.EnumDisplaySettingsW(None, -1, ctypes.byref(dm))  # ENUM_CURRENT_SETTINGS
+    return dm.dmDisplayOrientation  # 0, 1 (90°), 2 (180°), 3 (270°)
+
+
+def touch_to_screen_y(x, y, orientation):
+    """Digitizer position (0..1) -> distance from the top of the screen (0..1)."""
+    return (y, x, 1 - y, 1 - x)[orientation]
+
+
+def logical_max(caps, i):
+    return max(int.from_bytes(caps[i * VALUE_CAPS_SIZE + 44:i * VALUE_CAPS_SIZE + 48], "little", signed=True), 1)
+
+
+def axis_caps(pp, usage):
+    """{link collection (one per finger): logical max} for X (0x30) or Y (0x31)."""
+    n = ctypes.c_ushort(64)
+    buf = ctypes.create_string_buffer(VALUE_CAPS_SIZE * 64)
+    hid.HidP_GetSpecificValueCaps(0, 0x01, 0, usage, buf, ctypes.byref(n), pp)
+    raw = buf.raw
+    return {int.from_bytes(raw[i * VALUE_CAPS_SIZE + 6:i * VALUE_CAPS_SIZE + 8], "little"): logical_max(raw, i)
+            for i in range(n.value)}
+
+
+devices = {}   # raw device handle -> (preparsed data, x caps, y caps)
+contacts = {}  # finger (link collection) -> [start screen y, already triggered]
+
+
+def device_info(hdev):
+    if hdev not in devices:
+        size = ctypes.c_uint(0)
+        user32.GetRawInputDeviceInfoW(hdev, 0x20000005, None, ctypes.byref(size))  # RIDI_PREPARSEDDATA
+        pp = ctypes.create_string_buffer(size.value)
+        user32.GetRawInputDeviceInfoW(hdev, 0x20000005, pp, ctypes.byref(size))
+        devices[hdev] = (pp, axis_caps(pp, 0x30), axis_caps(pp, 0x31))
+    return devices[hdev]
+
+
+def handle_touch_report(pp, xcaps, ycaps, report):
+    global reveal_until
+    rbuf = ctypes.create_string_buffer(report, len(report))
+    for link, ymax in ycaps.items():
+        xv, yv = ctypes.c_ulong(), ctypes.c_ulong()
+        if hid.HidP_GetUsageValue(0, 0x01, link, 0x31, ctypes.byref(yv), pp, rbuf, len(report)) != HIDP_OK:
+            continue
+        hid.HidP_GetUsageValue(0, 0x01, link, 0x30, ctypes.byref(xv), pp, rbuf, len(report))
+        usages = (ctypes.c_ushort * 16)()
+        count = ctypes.c_ulong(16)
+        tip = (hid.HidP_GetUsages(0, 0x0D, link, usages, ctypes.byref(count), pp, rbuf, len(report)) == HIDP_OK
+               and 0x42 in usages[:count.value])  # Tip Switch = finger touching
+        if not tip:
+            contacts.pop(link, None)
+            continue
+        y = touch_to_screen_y(xv.value / xcaps.get(link, 1), yv.value / ymax, screen_orientation())
+        if link not in contacts:
+            contacts[link] = [y, False]
+        start, triggered = contacts[link]
+        if not triggered and start <= SWIPE_START and y - start >= SWIPE_DISTANCE:
+            contacts[link][1] = True
+            reveal_until = time.monotonic() + REVEAL_MS / 1000
+
+
+def handle_raw_input(hraw):
+    size = ctypes.c_uint(0)
+    user32.GetRawInputData(hraw, 0x10000003, None, ctypes.byref(size), 24)  # RID_INPUT
+    buf = ctypes.create_string_buffer(size.value)
+    user32.GetRawInputData(hraw, 0x10000003, buf, ctypes.byref(size), 24)
+    data = buf.raw
+    if int.from_bytes(data[0:4], "little") != 2:  # RIM_TYPEHID
+        return
+    pp, xcaps, ycaps = device_info(int.from_bytes(data[8:16], "little"))
+    report_size = int.from_bytes(data[24:28], "little")
+    for k in range(int.from_bytes(data[28:32], "little")):
+        handle_touch_report(pp, xcaps, ycaps, data[32 + k * report_size:32 + (k + 1) * report_size])
+
+
+def watch_touch():
+    # Runs in its own thread with a hidden window that receives WM_INPUT.
+    hwnd = user32.CreateWindowExW(0, "STATIC", "BatteryOverlayTouch", 0, 0, 0, 0, 0,
+                                  None, None, None, None)
+    device = RAWINPUTDEVICE(0x0D, 0x04, 0x100, hwnd)  # Digitizer/Touch Screen, RIDEV_INPUTSINK
+    if not user32.RegisterRawInputDevices(ctypes.byref(device), 1, ctypes.sizeof(RAWINPUTDEVICE)):
+        return  # no touchscreen
+    msg = wintypes.MSG()
+    while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+        if msg.message == 0x00FF:  # WM_INPUT
+            try:
+                handle_raw_input(ctypes.c_void_p(msg.lParam))
+            except Exception:
+                pass
+        user32.TranslateMessage(ctypes.byref(msg))
+        user32.DispatchMessageW(ctypes.byref(msg))
+
+
 def watch_quit():
     if kernel32.WaitForSingleObject(ctypes.c_void_p(quit_event), 0) == 0:  # signaled
         root.destroy()
@@ -188,6 +318,7 @@ def watch_quit():
 clock_win.geometry(f"+{MARGIN}+{MARGIN}")
 watch_quit()
 watch_cursor()
+threading.Thread(target=watch_touch, daemon=True).start()
 refresh()
 tick()
 make_click_through(root)

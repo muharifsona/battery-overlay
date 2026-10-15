@@ -12,8 +12,10 @@ Small always-on-top overlays for Windows, written in Python/tkinter:
 ![Clock overlay](screenshots/clock.png)
 
 The overlays stay faint until you need them: they fade to full opacity while
-the mouse is over one, and both show for a few seconds after the cursor (or a
-touch swipe) hits the top edge of the screen.
+the mouse is over one, and both show for a few seconds after the mouse hits the
+top edge of the screen or you **swipe down from the top edge** on a touchscreen.
+Touch is read directly from the touchscreen (Raw Input), so the swipe works even
+while a game or another app has focus, and it follows the screen rotation.
 
 They are also **click-through**: mouse clicks go to the
 windows behind them, they never take focus, and they don't show up in the
@@ -61,6 +63,8 @@ Edit the constants near the top of `battery_overlay.py`:
 | `IDLE_ALPHA` | `0.25` | Normal opacity, `0.0` invisible to `1.0` opaque |
 | `ACTIVE_ALPHA` | `1.0` | Opacity on hover or after a swipe from the top |
 | `REVEAL_MS` | `3000` | How long a swipe from the top keeps the overlays visible |
+| `SWIPE_START` | `0.03` | A touch swipe must start within this fraction of the top of the screen |
+| `SWIPE_DISTANCE` | `0.08` | ...and move down at least this fraction of the screen height |
 | `MARGIN` | `0` | Distance from screen edges in pixels |
 | `CLOCK_FORMAT` | `"%d/%m/%Y   %H:%M:%S"` | Date/time format, e.g. `"%H:%M"` or `"%d %b %Y   %I:%M %p"` |
 | `REFRESH_MS` | `1000` | Battery and network update interval |
