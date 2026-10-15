@@ -31,17 +31,22 @@ pip install psutil
 pythonw battery_overlay.py
 ```
 
+Running it again while the overlays are shown **closes them**, so the same
+command (or shortcut) works as an on/off toggle.
+
 `pythonw` runs without a console window and hides errors. Use
 `python battery_overlay.py` if something doesn't show up.
 
-To close the overlays, end `pythonw.exe` in Task Manager.
+## Desktop / Start Menu shortcut
 
-## Start automatically at login
-
-Press <kbd>Win</kbd>+<kbd>R</kbd>, open `shell:startup`, and create a shortcut there with:
+Create a shortcut (on the Desktop, in the Start Menu, or in `shell:startup` to
+start at login) with:
 
 - **Target:** `"C:\path\to\pythonw.exe" "C:\path\to\battery_overlay.py"`
 - **Start in:** the folder containing `battery_overlay.py`
+- **Icon:** `icon.ico` from this repo
+
+Click it once to show the overlays, click it again to hide them.
 
 ## Settings
 

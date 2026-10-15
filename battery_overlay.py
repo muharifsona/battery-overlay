@@ -5,13 +5,26 @@ Requires: pip install psutil
 
 Run:  pythonw battery_overlay.py   (no console window)
 The overlays are click-through: mouse clicks pass to the windows behind them.
-Close: end "pythonw.exe" in Task Manager.
+Running it again while the overlays are shown closes them (toggle).
 """
 import ctypes
 import time
 import tkinter as tk
 
 import psutil
+
+# Toggle: if an instance is already running, tell it to quit and exit.
+kernel32 = ctypes.windll.kernel32
+kernel32.CreateMutexW.restype = ctypes.c_void_p
+kernel32.CreateEventW.restype = ctypes.c_void_p
+ERROR_ALREADY_EXISTS = 183
+_mutex = kernel32.CreateMutexW(None, False, "Local\\BatteryOverlayMutex")
+already_running = kernel32.GetLastError() == ERROR_ALREADY_EXISTS
+quit_event = kernel32.CreateEventW(None, True, False, "Local\\BatteryOverlayQuit")
+if already_running:
+    kernel32.SetEvent(ctypes.c_void_p(quit_event))
+    raise SystemExit
+kernel32.ResetEvent(ctypes.c_void_p(quit_event))
 
 
 class SYSTEM_POWER_STATUS(ctypes.Structure):
@@ -125,7 +138,15 @@ def make_click_through(win):
     user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
 
 
+def watch_quit():
+    if kernel32.WaitForSingleObject(ctypes.c_void_p(quit_event), 0) == 0:  # signaled
+        root.destroy()
+        return
+    root.after(300, watch_quit)
+
+
 clock_win.geometry(f"+{MARGIN}+{MARGIN}")
+watch_quit()
 refresh()
 tick()
 make_click_through(root)
